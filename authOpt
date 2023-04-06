@@ -1,0 +1,89 @@
+const User = require("../model/auth.js");
+const bcrypt = require("bcrypt");
+const OtpModel = require('../model/forgetpassword.js')
+const jst = require("jsonwebtoken");
+exports.createuser = async (req, res) => {
+  let obj = {
+    firstname: req.body.firstname,
+    lastname: req.body.lastname,
+    gmail: req.body.gmail,
+    password: req.body.password,
+  };
+  try {
+    if (obj.password.length < 7) {
+      return res.status(400).json({ error: "Password is too short" });
+    }
+    obj.password = bcrypt.hashSync(req.body.password, 10);
+    const findEmail = await User.findOne({ gmail: req.body.gmail });
+    if (findEmail) {
+      return res.status(409).json({ error: "Email already exists" });
+    }
+    const result = await User.create(obj);
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+exports.login = async(req,res)=>{
+   const findEmail = await User.findOne({gmail:req.body.gmail})
+   const valid = bcrypt.compareSync(req.body.password, findEmail.password)
+   if(!valid){
+    res.send("not")
+   }
+   res.send("sccc")
+}
+const generatOtp = ()=>{
+    const digit = '0123456789'
+    let otp = ''
+    for(let i =0; i<6; i++){
+        otp += digit[Math.floor(Math.random()*10)]
+    }
+    return otp
+}
+exports.ForgetPassword = async(req,res)=>{
+    let gmail = req.body.gmail;
+    try {
+      const user = await User.findOne({ gmail: gmail });
+      console.log("email===",user);
+      if (!user) {
+        return res.status(404).json({ error: 'Email not found' });
+      }
+      const otp = generatOtp()
+      console.log("Otp====",otp);
+      const sendOtp = await OtpModel.create({gmail,otp})
+      return res.status(200).json({ 
+        Your_Otp: sendOtp.otp
+        });
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({ error: "Internal server error" });
+      }
+}
+
+exports.changePassword = async (req, res) => {
+    const gmail = req.body.gmail;
+    const otp = req.body.otp;
+    const newPassword = req.body.newPassword;
+    try {
+      const user = await User.findOne({ gmail: gmail });
+      if (!user) {
+        return res.status(404).json({ error: 'Email not found' });
+      }
+      const otpData = await OtpModel.findOne({ gmail, otp });
+      if (!otpData) {
+        return res.status(401).json({ error: 'Invalid OTP' });
+      }
+      
+      user.password = bcrypt.hashSync(newPassword, 10);
+      await user.save();
+      await OtpModel.deleteOne({ gmail, otp }); 
+      res.json({ message: 'Password changed'})
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({ error: "Internal server error" });
+    
+    }
+}
